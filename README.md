@@ -246,5 +246,5 @@ Este projeto está disponível sob a licença MIT.
 
 ---
 
-**Última atualização**: 2024
+**Última atualização**: 2026
 **Pipeline Status**: [![CI/CD](https://github.com/MatheusRPV/Portfolio/actions/workflows/ci-cd-pipeline.yml/badge.svg?branch=main)](https://github.com/MatheusRPV/Portfolio/actions/workflows/ci-cd-pipeline.yml)
