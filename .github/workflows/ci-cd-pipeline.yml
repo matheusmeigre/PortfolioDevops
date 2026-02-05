@@ -10,23 +10,18 @@ permissions:
   contents: read
   pages: write
   id-token: write
-  pull-requests: write
-
-env:
-  MAX_FILE_SIZE: 500000
 
 jobs:
-  # ETAPA 1 & 5: CI Protection + Matrix Strategy
-  ci-protection:
-    name: CI Protection (Node ${{ matrix.node-version }})
+  # ===== ETAPA 1: CI - Proteção de Branch (Com Matrix Strategy - Etapa 5) =====
+  ci:
+    name: CI - Node ${{ matrix.node-version }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
         node-version: ['18.x', '20.x']
-      fail-fast: false
 
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Node.js ${{ matrix.node-version }}
@@ -38,132 +33,51 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Check index.html exists
-        run: |
-          if [ ! -f "index.html" ]; then
-            echo "::error::index.html does not exist - file must not be deleted or renamed"
-            exit 1
-          fi
-          echo "✓ index.html found"
+      # Validação 1: Linting HTML
+      - name: Lint HTML (html-validate)
+        run: npm run lint
 
-      - name: Lint HTML with html-validate
+      # Validação 2: Verificar tamanho de arquivos (máx 500KB)
+      - name: Check file sizes (max 500KB)
         run: |
-          echo "Running HTML validation with html-validate..."
-          npm run lint
-          echo "✓ HTML validation passed"
-
-      - name: Validate file sizes (max 500KB)
-        run: |
-          echo "Checking file sizes..."
           find . -maxdepth 1 -type f \( -name "*.html" -o -name "*.css" -o -name "*.js" \) | while read file; do
             size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file")
-            size_kb=$((size / 1024))
-            max_kb=$((MAX_FILE_SIZE / 1024))
-            if [ "$size" -gt "$MAX_FILE_SIZE" ]; then
-              echo "::error::File $file exceeds ${max_kb}KB limit: ${size_kb}KB"
+            if [ "$size" -gt 500000 ]; then
+              echo "::error::$file exceeds 500KB limit"
               exit 1
-            else
-              echo "  ✓ $file: ${size_kb}KB (limit: ${max_kb}KB)"
             fi
           done
-          echo "✓ All files within size limits"
 
-      - name: Scan for forbidden text patterns
+      # Validação 3: Varredura de padrões proibidos
+      - name: Scan forbidden patterns (TODO, FIXME, senha, password)
         run: |
-          echo "Scanning for forbidden patterns (TODO, FIXME, senha, password)..."
-          forbidden_patterns=("TODO" "FIXME" "senha" "password")
-          found=0
-
-          for pattern in "${forbidden_patterns[@]}"; do
-            if grep -ri "$pattern" . \
-               --include="*.html" --include="*.css" --include="*.js" \
-               --exclude-dir=".git" --exclude-dir="node_modules" 2>/dev/null; then
-              echo "::error::Forbidden pattern found: $pattern"
-              found=1
-            fi
-          done
-
-          if [ $found -eq 1 ]; then
+          if grep -ri -E "TODO|FIXME|senha|password" . \
+             --include="*.html" --include="*.css" --include="*.js" \
+             --exclude-dir=".git" --exclude-dir="node_modules" 2>/dev/null; then
+            echo "::error::Forbidden patterns detected"
             exit 1
           fi
-          echo "✓ No forbidden patterns detected"
 
-      - name: Validate links and image URLs
+      # Validação 4: Verificar links e imagens
+      - name: Validate links and images
         run: |
-          echo "Validating HTML links and image references..."
-          error_count=0
-
-          # Extract all href and src attributes from index.html
-          while IFS= read -r url; do
-            if [ -z "$url" ]; then
-              continue
-            fi
-
-            # Skip external URLs (http/https)
+          grep -oP '(href|src)="\K[^"]+' index.html | while read url; do
             if [[ "$url" =~ ^https?:// ]]; then
-              echo "  ✓ External URL allowed: $url"
               continue
             fi
-
-            # Check relative file references
             if [[ "$url" =~ ^\./ ]]; then
               file_path="${url#./}"
-              if [ ! -f "$file_path" ] && [ ! -d "$file_path" ]; then
-                echo "::error::Invalid reference: $url (file not found)"
-                ((error_count++))
-              else
-                echo "  ✓ Valid reference: $url"
-              fi
-            elif [[ "$url" =~ ^/ ]]; then
-              # Root-relative paths - skip validation (would be relative to domain)
-              echo "  ✓ Root-relative path allowed: $url"
-            else
-              # Relative paths without ./ - check if file exists
-              if [ ! -f "$url" ] && [ ! -d "$url" ]; then
-                echo "::error::Invalid reference: $url (file not found)"
-                ((error_count++))
-              else
-                echo "  ✓ Valid reference: $url"
+              if [ ! -f "$file_path" ]; then
+                echo "::error::Invalid reference: $url"
+                exit 1
               fi
             fi
-          done < <(grep -oP '(href|src)="\K[^"]+' index.html)
+          done
 
-          if [ $error_count -gt 0 ]; then
-            echo "::error::Found $error_count invalid references"
-            exit 1
-          fi
-          echo "✓ All links and images are valid"
-
-      - name: Create validation report
-        if: always()
-        run: |
-          mkdir -p validation-output
-          cat > validation-output/report-node-${{ matrix.node-version }}.txt <<EOF
-          CI Protection Report - Node.js ${{ matrix.node-version }}
-          ================================================
-          Build Date: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          Status: ${{ job.status }}
-
-          Validations Performed:
-          ✓ index.html existence check
-          ✓ HTML linting with html-validate
-          ✓ File size validation (max 500KB)
-          ✓ Forbidden text patterns scanning
-          ✓ Links and image URL validation
-          EOF
-
-      - name: Upload validation artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: validation-report-node-${{ matrix.node-version }}
-          path: validation-output/
-          retention-days: 30
-
-  # ETAPA 2: CD - Deploy to GitHub Pages
+  # ===== ETAPA 2: CD - Deploy para GitHub Pages (após merge em main) =====
   deploy:
     name: Deploy to GitHub Pages
-    needs: ci-protection
+    needs: ci
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment:
@@ -171,13 +85,13 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup GitHub Pages
+      - name: Setup Pages
         uses: actions/configure-pages@v4
 
-      - name: Upload artifact to Pages
+      - name: Upload artifact
         uses: actions/upload-pages-artifact@v2
         with:
           path: '.'
@@ -186,48 +100,20 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v2
 
-      - name: Deployment Success
-        run: |
-          echo "✅ Successfully deployed to GitHub Pages!"
-          echo "🌐 URL: ${{ steps.deployment.outputs.page_url }}"
-
-  # ETAPA 4: Notifications - Log Failure
-  notify-failure:
-    name: Notify on Failure
-    needs: [ci-protection, deploy]
-    if: failure() && github.event_name == 'push'
+  # ===== ETAPA 4: Notificações de Falha =====
+  notify:
+    name: Notify on failure
+    needs: [ci, deploy]
+    if: failure()
     runs-on: ubuntu-latest
 
     steps:
-      - name: Log failure context
+      - name: Notify about failure
         run: |
           echo "❌ Pipeline failed!"
           echo "Repository: ${{ github.repository }}"
           echo "Branch: ${{ github.ref_name }}"
           echo "Commit: ${{ github.sha }}"
           echo "Author: ${{ github.actor }}"
-          echo "Run ID: ${{ github.run_id }}"
           echo ""
-          echo "View details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          echo ""
-          echo "Note: Email notifications are enabled in repository settings"
-          echo "Check 'Settings > Notifications > Failed workflow runs'"
-
-      - name: Create failure summary
-        run: |
-          cat >> $GITHUB_STEP_SUMMARY <<EOF
-          ## ❌ Pipeline Failure Alert
-
-          **Repository:** [${{ github.repository }}](https://github.com/${{ github.repository }})
-
-          **Configuration:**
-          - **Branch:** ${{ github.ref_name }}
-          - **Commit:** \`${{ github.sha }}\`
-          - **Author:** @${{ github.actor }}
-          - **Run:** [#${{ github.run_number }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-          **Action Required:**
-          Review the workflow run and fix validation failures before attempting to merge.
-
-          [View Full Details →](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          EOF
+          echo "Detalhes: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
