@@ -1,0 +1,25 @@
+{
+  "extends": ["html-validate:recommended"],
+  "rules": {
+    "attr-case": "error",
+    "attr-spacing": "error",
+    "close-attr": "error",
+    "deprecated": "warn",
+    "doctype-html": "error",
+    "element-case": "error",
+    "element-name": "error",
+    "empty-heading": "error",
+    "id-pattern": "warn",
+    "input-attributes": "warn",
+    "missing-doctype": "error",
+    "no-autoplay": "warn",
+    "no-conditional-comment": "error",
+    "no-dup-attr": "error",
+    "no-dup-id": "error",
+    "no-inline-style": "off",
+    "no-trailing-whitespace": "warn",
+    "require-sri": "off",
+    "script-type": "warn",
+    "unrecognized-char-ref": "error"
+  }
+}
