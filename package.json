@@ -1,0 +1,12 @@
+{
+  "name": "portfolio",
+  "version": "1.0.0",
+  "description": "Portfolio com GitHub Actions CI/CD",
+  "scripts": {
+    "lint": "html-validate index.html",
+    "test": "npm run lint"
+  },
+  "devDependencies": {
+    "html-validate": "^8.0.0"
+  }
+}
