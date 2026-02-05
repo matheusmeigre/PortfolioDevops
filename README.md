@@ -1,6 +1,6 @@
 # Portfolio - Matheus RPV
 
-[![CI/CD Pipeline](https://github.com/matheusmeigre/PortfolioDevops/blob/main/.github/workflows/ci-cd-pipeline.yml)]
+[![CI/CD Pipeline](https://github.com/matheusmeigre/Portfolio/actions/workflows/ci-cd-pipeline.yml/badge.svg)](https://github.com/matheusmeigre/Portfolio/actions)
 
 ## Descrição
 
